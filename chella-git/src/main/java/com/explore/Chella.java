@@ -1,9 +1,14 @@
 package com.explore;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.*;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.zip.GZIPOutputStream;
 
 public class Chella {
     private static final String REPO_DIR = ".chella/";
@@ -37,18 +42,47 @@ public class Chella {
         }
     }
 
+    private static byte[] compressContent(byte[] data) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (GZIPOutputStream gos = new GZIPOutputStream(baos)){
+            gos.write(data);
+        }
+        return baos.toByteArray();
+    }
+
+    private static void addFileToStagingArea(String hash, byte[] content) {
+        try {
+            byte[] compressedFileContent = compressContent(content);
+            StringBuilder stagingContent = new StringBuilder();
+            Path path = Paths.get(REPO_DIR + "index");
+            if (Files.exists(path)) {
+                stagingContent.append(Files.readString(path));
+            }
+
+            String newStagingContent = hash + " " + Arrays.toString(compressedFileContent) + "\n";
+            stagingContent.append(newStagingContent);
+            Files.writeString(path, stagingContent.toString(), StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING);
+        } catch (IOException e) {
+            System.out.println("file not found");
+        }
+    }
     private static void add(String fileName){
         try {
             byte[] fileContent = Files.readAllBytes(Path.of(fileName));
             String hash = hashContent(fileContent);
             if (hash != null) {
                 String stagingFolder = hash.substring(0,2) + "/";
-                Path subFolderPath = Paths.get(OBJECTS_DIR, stagingFolder);
+                Path subFolderPath = Paths.get(REPO_DIR + OBJECTS_DIR, stagingFolder);
                 Files.createDirectories(subFolderPath);
 
                 String stagingFileName = hash.substring(2);
                 Path filePath = Paths.get(subFolderPath.toString(), stagingFileName);
                 Files.write(filePath, fileContent);
+
+                // add file to staging area
+                addFileToStagingArea(hash, fileContent);
+
+                System.out.println("Added " + fileName);
             } else {
                 System.out.println("No such algorithm.");
             }
