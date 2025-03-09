@@ -300,7 +300,7 @@ class CommitData {
         return "{" +
                 "timeStamp: " + timeStamp + "\n" +
                 "message: " + message + "\n" +
-                "files: " + files + "\n" +
+                "files: " + Arrays.toString(files) + "\n" +
                 "parent: " + parent + "\n"
                 +"}";
     }
