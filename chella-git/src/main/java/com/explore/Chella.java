@@ -8,12 +8,14 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.List;
 import java.util.zip.GZIPOutputStream;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 public class Chella {
-    private static final String REPO_DIR = ".chella/";
+    private static final String REPO_DIR = "src/main/java/com/explore/.chella/";
     private static final String OBJECTS_DIR = "objects/";
 
     private static void init() throws IOException {
@@ -44,13 +46,15 @@ public class Chella {
         }
     }
 
-    private static String hashContent(Map<String, String> content){
+    /**
+     * hashes content of current commit of type Commit Data by obtaining the string format first
+     * then converting it into bytes using the UTF_8 format and hashing it using SHA-1
+     * @param content typeof CommitData
+     * @return hashed content
+     */
+    private static String hashContent(CommitData content){
         try {
-            StringBuilder contentString = new StringBuilder();
-            for (Map.Entry<String, String> entry : content.entrySet()) {
-                contentString.append(entry.getKey()).append(": ").append(entry.getValue()).append("\n");
-            }
-            String commitDataString = contentString.toString();
+            String commitDataString = content.toString();
 
             MessageDigest digest = MessageDigest.getInstance("SHA-1");
             byte[] hash = digest.digest(commitDataString.getBytes(StandardCharsets.UTF_8));
@@ -90,6 +94,14 @@ public class Chella {
         }
     }
 
+    /**
+     * This method is responsible for adding files to staging area, it first reads the
+     * content of the file and returns a hash of the content, the first two letters of
+     * the hash is used to create a sub folder, and the remaining 38 letters are used
+     * to name the file in the objects folder
+     *
+     * @param fileName name of file to be added
+     */
     private static void add(String fileName){
         try {
             byte[] fileContent = Files.readAllBytes(Path.of(fileName));
@@ -115,10 +127,28 @@ public class Chella {
         }
     }
 
-    private static String getCurrentHead(){
+    private static String getCurrentHead() {
         try {
             return Files.readString(Path.of(REPO_DIR + "HEAD"));
+//            Path headPath = Path.of(REPO_DIR, "HEAD");
+//            System.out.println("Trying to read: " + headPath.toAbsolutePath());
+//
+//            if (!Files.exists(headPath)) {
+//                System.out.println("❌ HEAD file does not exist at: " + headPath.toAbsolutePath());
+//                return null;
+//            }
+//            if (!Files.isRegularFile(headPath)) {
+//                System.out.println("❌ HEAD is not a regular file.");
+//                return null;
+//            }
+//            if (!Files.isReadable(headPath)) {
+//                System.out.println("❌ HEAD file is not readable.");
+//                return null;
+//            }
+//
+//            return Files.readString(headPath, StandardCharsets.UTF_8);
         } catch (IOException e) {
+            System.out.println("Error reading HEAD file.");
             return null;
         }
     }
@@ -129,17 +159,20 @@ public class Chella {
             byte[] index = Files.readAllBytes(path); // stores all the content from the "staging area"
             String parentCommit = getCurrentHead(); // retrieves the current head
 
-            Map<String, String> commitData = new HashMap<>(); // stores commit data that will be later hashed
-            commitData.put("timeStamp", new Date().toString());
-            commitData.put("message", commitMessage);
-            commitData.put("files", Arrays.toString(index));
-            commitData.put("parent", parentCommit);
+//            Map<String, String> commitData = new HashMap<>(); // stores commit data that will be later hashed
+//
+//            commitData.put("timeStamp", new Date().toString());
+//            commitData.put("message", commitMessage);
+//            commitData.put("files", Arrays.toString(index));
+//            commitData.put("parent", parentCommit);
+
+            CommitData commitData = new CommitData(new Date().toString(), commitMessage, index, parentCommit); // stores commit data that will be later hashed
 
             String commitHash = hashContent(commitData);
 
             if (commitHash != null) {
                 Path commitPath = Paths.get(REPO_DIR + OBJECTS_DIR + commitHash);
-                Files.write(commitPath, commitData.toString().getBytes()); // writes commit data to objects database
+                Files.write(commitPath, commitData.toJson().getBytes()); // writes commit data to objects database
                 Files.writeString(Paths.get(REPO_DIR + "HEAD"), commitHash);
                 Files.writeString(path, "", StandardOpenOption.TRUNCATE_EXISTING); // clears the staging area
 
@@ -148,12 +181,34 @@ public class Chella {
                 System.out.println("Unable to process commit (No such algorithm)");
             }
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            System.out.println("Error serializing commit data");
         }
     }
 
-    public static void main(String[] args) throws IOException {
+    private static void log(){
+        try {
+            String currentCommitHash = getCurrentHead();
+            while (currentCommitHash != null && !currentCommitHash.isEmpty()) {
+                String commitJson  = Files.readString(Path.of(REPO_DIR + OBJECTS_DIR + currentCommitHash));
+                CommitData commitData = CommitData.fromJson(commitJson);
+                System.out.println("" +
+                        "commit " + currentCommitHash
+                        + "\nDate: " + commitData.timeStamp
+                        + "\n\n" + commitData.message + "\n\n");
 
+                currentCommitHash = (commitData.parent == null || commitData.parent.isEmpty()) ? null : commitData.parent;
+            }
+            
+        } catch (IOException e) {
+            // throw new RuntimeException(e);
+            System.out.println("Error reading commit data: " + e.getMessage());
+        }
+
+    }
+
+    public static void main(String[] args) throws IOException {
+        log();
+        System.out.println(Arrays.toString(args));
         String command = args[0];
 
         try {
@@ -175,9 +230,88 @@ public class Chella {
                     }
                     commit(args[1]);
                     break;
+                case "log":
+                    if (args.length < 1) {
+                        System.out.println("Usage: java Chella log");
+                        return;
+                    }
+                    log();
+                    break;
             }
         }  catch (IOException e) {
             System.err.println("Error: " + e.getMessage());
         }
+    }
+}
+
+
+// todo: move to its own class
+class CommitData {
+    @JsonProperty("timeStamp")
+    String timeStamp;
+    @JsonProperty("message")
+    String message;
+    @JsonProperty("files")
+    byte[] files;
+    @JsonProperty("parent")
+    String parent;
+
+    CommitData(){}
+
+    CommitData(String timeStamp, String message, byte[] files, String parent) {
+        this.timeStamp = timeStamp;
+        this.message = message;
+        this.files = files;
+        this.parent = parent;
+    }
+
+    public String getTimeStamp() {
+        return timeStamp;
+    }
+    public void setTimeStamp(String timeStamp) {
+        this.timeStamp = timeStamp;
+    }
+
+    public String getParent() {
+        return parent;
+    }
+    public void setParent(String parent) {
+        this.parent = parent;
+    }
+
+    public byte[] getFiles() {
+        return files;
+    }
+
+    public void setFiles(byte[] files) {
+        this.files = files;
+    }
+
+    public String getMessage() {
+        return message;
+    }
+
+    public void setMessage(String message) {
+        this.message = message;
+    }
+
+    @Override
+    public String toString(){
+        return "{" +
+                "timeStamp: " + timeStamp + "\n" +
+                "message: " + message + "\n" +
+                "files: " + files + "\n" +
+                "parent: " + parent + "\n"
+                +"}";
+    }
+
+    public String toJson() throws IOException {
+        ObjectMapper om = new ObjectMapper();
+        return om.writeValueAsString(this);
+    }
+
+    public static CommitData fromJson(String json) throws IOException {
+        ObjectMapper om = new ObjectMapper();
+        return om.readValue(json, CommitData.class);
     }
 }
