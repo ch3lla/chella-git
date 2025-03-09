@@ -8,7 +8,6 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.Date;
-import java.util.List;
 import java.util.zip.GZIPOutputStream;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -159,13 +158,6 @@ public class Chella {
             byte[] index = Files.readAllBytes(path); // stores all the content from the "staging area"
             String parentCommit = getCurrentHead(); // retrieves the current head
 
-//            Map<String, String> commitData = new HashMap<>(); // stores commit data that will be later hashed
-//
-//            commitData.put("timeStamp", new Date().toString());
-//            commitData.put("message", commitMessage);
-//            commitData.put("files", Arrays.toString(index));
-//            commitData.put("parent", parentCommit);
-
             CommitData commitData = new CommitData(new Date().toString(), commitMessage, index, parentCommit); // stores commit data that will be later hashed
 
             String commitHash = hashContent(commitData);
@@ -191,8 +183,7 @@ public class Chella {
             while (currentCommitHash != null && !currentCommitHash.isEmpty()) {
                 String commitJson  = Files.readString(Path.of(REPO_DIR + OBJECTS_DIR + currentCommitHash));
                 CommitData commitData = CommitData.fromJson(commitJson);
-                System.out.println("" +
-                        "commit " + currentCommitHash
+                System.out.println("commit " + currentCommitHash
                         + "\nDate: " + commitData.timeStamp
                         + "\n\n" + commitData.message + "\n\n");
 
